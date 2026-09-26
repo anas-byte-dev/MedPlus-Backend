@@ -1,0 +1,60 @@
+server:
+  port: ${PORT:8080}
+  tomcat:
+    connection-timeout: 60000ms
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  application:
+    name: medpulse-backend
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require&connectTimeout=30&socketTimeout=60&tcpKeepAlive=true}
+    username: ${DATABASE_USERNAME:postgres.mddqyuoewsrcnmklvzhp}
+    password: ${DATABASE_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 30000
+      validation-timeout: 5000
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      keepalive-time: 60000
+      connection-test-query: SELECT 1
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        default_schema: public
+        jdbc:
+          batch_size: 25
+
+medpulse:
+  jwt:
+    secret: ${JWT_SECRET:}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 hours
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.5-flash}
+
+  # Supabase config (for server-side Supabase admin operations if needed)
+  supabase:
+    url: ${SUPABASE_URL:}
+    anon-key: ${SUPABASE_ANON_KEY:}
+    service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
