@@ -17,27 +17,27 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/agent")
 @RequiredArgsConstructor
-@Tag(name = "Agentic AI", description = "Autonomous Clinical Diagnostic Copilot & Tool Execution Engine")
+@Tag(name = "Clinical Assistant", description = "Clinical decision support and medical advisory service")
 public class AgentController {
 
     private final AutonomousAgentService agentService;
     private final GeminiClient geminiClient;
 
     @PostMapping("/chat")
-    @Operation(summary = "Interactive conversation with MedPulse Clinical Copilot")
+    @Operation(summary = "Consult clinical health assistant for symptom and department guidance")
     public ResponseEntity<AgentDtos.AgentChatResponse> chat(@Valid @RequestBody AgentDtos.AgentChatRequest request) {
         return ResponseEntity.ok(agentService.chat(request));
     }
 
     @PostMapping("/execute-tool")
     @PreAuthorize("hasAnyRole('DOCTOR', 'TRIAGE_NURSE', 'ADMIN')")
-    @Operation(summary = "Direct invocation of an autonomous clinical agent tool")
+    @Operation(summary = "Execute clinical support tool (vitals analysis, drug check)")
     public ResponseEntity<String> executeTool(@Valid @RequestBody AgentDtos.DirectToolRequest request) {
         return ResponseEntity.ok(agentService.executeDirectTool(request.getToolName(), request.getParameters()));
     }
 
     @GetMapping("/audit-logs")
-    @Operation(summary = "Fetch real-time audit logs of autonomous tool executions")
+    @Operation(summary = "Fetch audit logs of clinical tool evaluations")
     public ResponseEntity<List<AgentAuditLog>> getAuditLogs() {
         return ResponseEntity.ok(agentService.getRecentAuditLogs());
     }

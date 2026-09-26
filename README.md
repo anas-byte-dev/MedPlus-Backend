@@ -3,25 +3,23 @@
 - **Frontend Repository:** [https://github.com/anas-byte-dev/MedPlus-Frontend](https://github.com/anas-byte-dev/MedPlus-Frontend)
 - **Backend Repository:** [https://github.com/anas-byte-dev/MedPlus-Backend](https://github.com/anas-byte-dev/MedPlus-Backend)
 
-Welcome to the backend service of **MedPlus Appointments**! I built this service using **Java 25**, **Spring Boot**, **Spring Security 6**, and **Spring Data JPA** to serve as the reliable, secure backbone for multi-role hospital operations, appointment scheduling, and autonomous AI-assisted clinical triage.
+Welcome to the backend service of **MedPlus Appointments** — a high-performance clinical management API built with **Java 21/25**, **Spring Boot 3**, **Spring Security 6**, and **Spring Data JPA**. It provides secure multi-role access for patients, doctors, hospital admins, along with clinical triage workflows and Gemini AI health assistance.
 
 ---
 
-## 💡 Engineering Philosophy & Why I Built It This Way
+## 🏛️ System Architecture
 
-When writing a backend for healthcare, data integrity, security, and low latency are non-negotiable. I didn't want a toy CRUD app; I wanted an enterprise-ready system that can handle real hospital workloads.
-
-Key architectural decisions I made:
-1. **Stateless JWT Security with Spring Security 6**:
+Key architectural highlights:
+1. **Stateless JWT Authentication (Spring Security 6)**:
    - Every protected route is guarded by my custom `JwtAuthFilter`.
    - Passwords are encrypted using strong BCrypt hashing.
    - Roles (`ROLE_PATIENT`, `ROLE_DOCTOR`, `ROLE_HOSPITAL`, `ROLE_ADMIN`) strictly gate sensitive endpoints.
 2. **Dual Database Flexibility (PostgreSQL via Supabase + H2)**:
    - Configured with HikariCP connection pooling to connect to PostgreSQL (Supabase cloud database with SSL enabled).
    - Can easily run locally or in memory with H2 for rapid development and testing without spinning up external cloud databases.
-3. **Autonomous Clinical AI Agent (Google Gemini Integration)**:
-   - Integrated Google Gemini via a custom `GeminiClient` with a ReAct (Reasoning + Acting) loop.
-   - Instead of just returning raw LLM text, my `AutonomousAgentService` parses clinical intent and automatically executes real clinical tools:
+3. **Clinical Decision Support & Health Advisor (Gemini Integration)**:
+   - Integrated Google Gemini via `GeminiClient` with automated clinical tool execution:
+   - Evaluates symptoms and executes specialized clinical tools when needed:
      - 🩺 **AnalyzeVitalsTool**: Evaluates blood pressure, pulse, SpO2, and temperature against clinical thresholds.
      - 💊 **CheckDrugInteractionsTool**: Scans proposed prescriptions against patient allergies and contraindications.
      - 📋 **DifferentialDiagnosisTool**: Synthesizes chief complaints into prioritized differential workups.

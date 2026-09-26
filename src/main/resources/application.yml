@@ -11,8 +11,8 @@ spring:
     name: medpulse-backend
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require&connectTimeout=30&socketTimeout=60&tcpKeepAlive=true}
-    username: ${DATABASE_USERNAME:postgres.mddqyuoewsrcnmklvzhp}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/medplus}
+    username: ${DATABASE_USERNAME:postgres}
     password: ${DATABASE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
     hikari:

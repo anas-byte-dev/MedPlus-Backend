@@ -57,7 +57,7 @@ public class AutonomousAgentService {
             });
         }
 
-        // Autonomous ReAct Intent Recognition: Determine if clinical tools should be invoked
+        // Clinical intent classification: Determine if specialized clinical evaluation tools should be triggered
         String lowerMsg = userMessage.toLowerCase();
 
         if (lowerMsg.contains("vital") || lowerMsg.contains("spo2") || lowerMsg.contains("heart rate") || lowerMsg.contains("blood pressure")) {

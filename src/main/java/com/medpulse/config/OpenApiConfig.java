@@ -17,11 +17,11 @@ public class OpenApiConfig {
     public OpenAPI medpulseOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("MedPulse AI — Autonomous Clinical Triage & Diagnostic Intelligence API")
-                        .description("High-acuity clinical decision support, vital signs anomaly detection, ESI triage scoring, and agentic AI tools powered by Spring Boot 3 & Java 21.")
-                        .version("2.5.0")
-                        .contact(new Contact().name("MedPulse Clinical Engineering Team").email("clinical@medpulse.ai"))
-                        .license(new License().name("Apache 2.0").url("https://www.apache.org/licenses/LICENSE-2.0")))
+                        .title("MedPlus Healthcare API — Doctor Scheduling & Clinical Care Engine")
+                        .description("REST API for doctor appointment scheduling, multi-role hospital access, and clinical triage evaluation built with Spring Boot 3 and Java.")
+                        .version("1.0.0")
+                        .contact(new Contact().name("Anas Siddiqui").email("anassidd7256@gmail.com"))
+                        .license(new License().name("MIT").url("https://opensource.org/licenses/MIT")))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
                 .components(new Components().addSecuritySchemes("Bearer Authentication", createSecurityScheme()));
     }
@@ -31,6 +31,6 @@ public class OpenApiConfig {
                 .type(SecurityScheme.Type.HTTP)
                 .bearerFormat("JWT")
                 .scheme("bearer")
-                .description("Enter your JWT Bearer token obtained from /api/auth/login");
+                .description("Enter JWT Bearer token obtained from /api/auth/login");
     }
 }
