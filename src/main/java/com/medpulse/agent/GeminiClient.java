@@ -24,21 +24,21 @@ public class GeminiClient {
 
     private static final String CONFIG_FILE_NAME = "medpulse-ai.properties";
     private static final List<String> AVAILABLE_MODELS = List.of(
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
+            "gemini-flash-latest",
             "gemini-3.5-flash-lite",
-            "gemini-3.8-flash"
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash"
     );
 
     @Value("${medpulse.gemini.api-key:}")
     private String initialApiKey;
 
-    @Value("${medpulse.gemini.model:gemini-2.5-flash}")
+    @Value("${medpulse.gemini.model:gemini-flash-latest}")
     private String initialModelName;
 
     private volatile String apiKey = "";
-    private volatile String modelName = "gemini-2.5-flash";
+    private volatile String modelName = "gemini-flash-latest";
     private volatile String lastError = null;
     private volatile boolean isLiveConnected = false;
 
@@ -125,84 +125,94 @@ public class GeminiClient {
         verifyConnectionSilently();
     }
 
+    private String callGeminiApi(String model, String fullPrompt) throws Exception {
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
+
+        Map<String, Object> body = Map.of(
+                "contents", List.of(Map.of("parts", List.of(Map.of("text", fullPrompt))))
+        );
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(12))
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 200) {
+            JsonNode root = objectMapper.readTree(resp.body());
+            JsonNode textNode = root.at("/candidates/0/content/parts/0/text");
+            if (!textNode.isMissingNode() && !textNode.asText().isBlank()) {
+                return textNode.asText();
+            }
+        }
+        throw new RuntimeException("HTTP " + resp.statusCode() + ": " + resp.body());
+    }
+
     private void verifyConnectionSilently() {
         if (!hasApiKey()) {
             this.isLiveConnected = false;
             return;
         }
-        try {
-            String testPrompt = "Respond with 'READY' if clinical agent is online.";
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
 
-            Map<String, Object> body = Map.of(
-                    "contents", List.of(Map.of("parts", List.of(Map.of("text", testPrompt))))
-            );
+        List<String> modelsToVerify = new ArrayList<>();
+        if (this.modelName != null && !this.modelName.isBlank()) modelsToVerify.add(this.modelName);
+        if (!modelsToVerify.contains("gemini-flash-latest")) modelsToVerify.add("gemini-flash-latest");
+        if (!modelsToVerify.contains("gemini-3.5-flash-lite")) modelsToVerify.add("gemini-3.5-flash-lite");
 
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(6))
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                    .build();
-
-            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                this.isLiveConnected = true;
-                this.lastError = null;
-                log.info("MedPulse AI live connection verified successfully with model: {}", modelName);
-            } else {
-                this.isLiveConnected = false;
-                this.lastError = "HTTP " + resp.statusCode() + ": " + resp.body();
-                log.warn("Gemini connection test failed: {}", this.lastError);
+        for (String m : modelsToVerify) {
+            try {
+                String testPrompt = "Respond with 'READY' if clinical agent is online.";
+                String result = callGeminiApi(m, testPrompt);
+                if (result != null && !result.isBlank()) {
+                    this.isLiveConnected = true;
+                    this.modelName = m;
+                    this.lastError = null;
+                    log.info("MedPulse AI live connection verified successfully with model: {}", m);
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("Gemini verification with model '{}' failed: {}", m, e.getMessage());
+                this.lastError = e.getMessage();
             }
-        } catch (Exception e) {
-            this.isLiveConnected = false;
-            this.lastError = e.getMessage();
-            log.warn("Gemini verification failed silently: {}", e.getMessage());
         }
+        this.isLiveConnected = false;
     }
 
     public String generateClinicalResponse(String prompt, String systemContext) {
-        if (isLiveConnected()) {
-            try {
-                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+        if (hasApiKey()) {
+            String fullPrompt = "SYSTEM CLINICAL DIRECTIVE: You are Dr. MedPlus AI Health Consultant, an empathetic, highly knowledgeable medical triage and clinical health advisor for the MedPlus Appointments healthcare platform.\n"
+                    + "GUIDELINES FOR YOUR RESPONSE:\n"
+                    + "1. TONE: Warm, humanoid, respectful, and clinically reliable. Avoid robotic disclaimers or repetitive AI phrasing.\n"
+                    + "2. MINOR AILMENTS (e.g., mild cold, itching/rash, tension headache, minor indigestion, dehydration, minor scrape, fatigue, sleep hygiene):\n"
+                    + "   - Provide practical, safe home care, hydration, rest, and natural relief steps.\n"
+                    + "   - Explain what signs to monitor.\n"
+                    + "3. SERIOUS OR ACUTE SYMPTOMS (e.g., chest tightness/pain, acute breathlessness, sudden numbness, high persistent fever, severe abdominal pain, persistent vomiting):\n"
+                    + "   - Emphasize the importance of urgent in-person medical evaluation.\n"
+                    + "   - Clearly suggest the appropriate medical specialist (e.g. Cardiologist, Neurologist, Pulmonologist, Gastroenterologist, Dermatologist) or Emergency Department.\n"
+                    + "4. RELEVANCE: Answer whatever the patient or clinician asks dynamically and thoroughly.\n\n"
+                    + (systemContext != null && !systemContext.isBlank() ? "PATIENT CONTEXT:\n" + systemContext + "\n\n" : "")
+                    + "USER QUERY:\n" + prompt;
 
-                String fullPrompt = "SYSTEM CLINICAL DIRECTIVE: You are Dr. MedPlus AI Health Consultant, an empathetic, highly knowledgeable medical triage and clinical health advisor for the MedPlus Appointments healthcare platform.\n"
-                        + "GUIDELINES FOR YOUR RESPONSE:\n"
-                        + "1. TONE: Warm, humanoid, respectful, and clinically reliable. Avoid robotic disclaimers or repetitive AI phrasing.\n"
-                        + "2. MINOR AILMENTS (e.g., mild cold, tension headache, minor indigestion, dehydration, minor scrape, fatigue, sleep hygiene):\n"
-                        + "   - Provide practical, safe home care, hydration, rest, and natural relief steps.\n"
-                        + "   - Explain what signs to monitor.\n"
-                        + "3. SERIOUS OR ACUTE SYMPTOMS (e.g., chest tightness/pain, acute breathlessness, sudden numbness, high persistent fever, severe abdominal pain, persistent vomiting):\n"
-                        + "   - Emphasize the importance of urgent in-person medical evaluation.\n"
-                        + "   - Clearly suggest the appropriate medical specialist (e.g. Cardiologist, Neurologist, Pulmonologist, Gastroenterologist) or Emergency Department.\n"
-                        + "4. RELEVANCE: Answer whatever the patient or clinician asks dynamically and thoroughly.\n\n"
-                        + (systemContext != null && !systemContext.isBlank() ? "PATIENT CONTEXT:\n" + systemContext + "\n\n" : "")
-                        + "USER QUERY:\n" + prompt;
+            List<String> modelsToTry = new ArrayList<>();
+            if (this.modelName != null && !this.modelName.isBlank()) modelsToTry.add(this.modelName);
+            if (!modelsToTry.contains("gemini-flash-latest")) modelsToTry.add("gemini-flash-latest");
+            if (!modelsToTry.contains("gemini-3.5-flash-lite")) modelsToTry.add("gemini-3.5-flash-lite");
 
-                Map<String, Object> body = Map.of(
-                        "contents", List.of(Map.of("parts", List.of(Map.of("text", fullPrompt))))
-                );
-
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(endpoint))
-                        .header("Content-Type", "application/json")
-                        .timeout(Duration.ofSeconds(15))
-                        .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                        .build();
-
-                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    JsonNode root = objectMapper.readTree(resp.body());
-                    JsonNode textNode = root.at("/candidates/0/content/parts/0/text");
-                    if (!textNode.isMissingNode() && !textNode.asText().isBlank()) {
-                        return textNode.asText();
+            for (String targetModel : modelsToTry) {
+                try {
+                    String result = callGeminiApi(targetModel, fullPrompt);
+                    if (result != null && !result.isBlank()) {
+                        this.isLiveConnected = true;
+                        this.lastError = null;
+                        this.modelName = targetModel;
+                        return result;
                     }
-                } else {
-                    log.warn("Gemini API returned status {}: {}", resp.statusCode(), resp.body());
+                } catch (Exception e) {
+                    log.warn("Gemini call with model '{}' failed: {}", targetModel, e.getMessage());
+                    this.lastError = e.getMessage();
                 }
-            } catch (Exception e) {
-                log.warn("Live Gemini API call failed, using intelligent clinical fallback engine: {}", e.getMessage());
             }
         }
 
@@ -210,9 +220,22 @@ public class GeminiClient {
     }
 
     private String generateClinicalFallback(String prompt, String context) {
-        String p = prompt.toLowerCase();
+        String p = prompt.trim().toLowerCase();
 
-        // 1. Critical / Red-Flag Symptoms: High Acuity -> Strongly advise specialist / emergency
+        // 0. Friendly Humanoid Greetings
+        if (p.equals("hi") || p.equals("hello") || p.equals("hey") || p.equals("hwl") || p.equals("hlw") || p.equals("helo")
+                || p.contains("good morning") || p.contains("good evening") || p.contains("good afternoon") 
+                || p.startsWith("hello") || p.startsWith("hi ") || p.equals("namaste") || p.contains("who are you")) {
+            return "### 🩺 Welcome to Dr. MedPlus AI Clinical Assistant\n\n"
+                    + "Hello! I am **Dr. MedPlus AI**, your clinical health advisor on MedPlus Appointments.\n\n"
+                    + "I am here to help you:\n"
+                    + "- **Evaluate Health Symptoms:** Describe any symptom you are experiencing (e.g., skin itching, fever, headache, stomach discomfort, or joint pain).\n"
+                    + "- **Safe Home Care Advice:** Evidence-based first-line wellness steps, hydration tips, and monitoring guidelines.\n"
+                    + "- **Specialist Referrals:** Guide you to the right specialist doctor (Cardiology, Dermatology, Neurology, Orthopedics, Pediatrics, General Medicine) across Muzaffarpur, Patna, and Delhi.\n\n"
+                    + "**How are you feeling today?** Feel free to describe any symptoms, when they started, or tap one of the common concerns above.";
+        }
+
+        // 1. Critical / Red-Flag Cardiac Symptoms
         if (p.contains("chest pain") || p.contains("heart") || p.contains("angina") || p.contains("palpitation") || p.contains("left arm")) {
             return "### ⚠️ Cardiac Health Advisory — Urgent Medical Attention Recommended\n\n"
                     + "Chest discomfort, pressure, or radiating pain to the arm, neck, or jaw can be a sign of acute cardiac strain or ischemia and should **never be ignored**.\n\n"
@@ -223,6 +246,22 @@ public class GeminiClient {
                     + "4. An emergency 12-lead ECG and cardiac enzyme evaluation are critical to rule out acute events.";
         }
 
+        // 2. Dermatology, Rashes, Itching, Allergic Reactions
+        if (p.contains("itch") || p.contains("rash") || p.contains("skin") || p.contains("allergy") || p.contains("allergic") 
+                || p.contains("hive") || p.contains("redness") || p.contains("eczema") || p.contains("bump") || p.contains("scabies") || p.contains("scratch")) {
+            return "### 🧴 Dermatology & Skin Health Guidance\n\n"
+                    + "Skin itching (*pruritus*) and rashes are commonly triggered by contact dermatitis (reactions to soap, detergent, or cosmetics), dry skin, heat rash, mild fungal infections, or allergic hives.\n\n"
+                    + "**Practical Home Care & Relief Steps:**\n"
+                    + "1. **Avoid Scratching:** Scratching injures the epidermis and can introduce bacterial skin infections (*impetigo*). Keep fingernails clipped and clean.\n"
+                    + "2. **Cool Compresses:** Place a clean, cool, damp cloth on the itchy areas for 10–15 minutes to soothe inflamed nerve endings.\n"
+                    + "3. **Gentle Moisturization:** Apply an unscented, alcohol-free ceramide moisturizer (like petroleum jelly or calamine lotion) while the skin is still slightly damp.\n"
+                    + "4. **Tepid Baths:** Bathe in lukewarm water instead of hot water; use mild, fragrance-free cleanser substitutes.\n"
+                    + "5. **Over-The-Counter Options:** An oral non-drowsy antihistamine (such as Cetirizine 10mg) or 1% hydrocortisone cream may alleviate allergic flare-ups.\n\n"
+                    + "**When to Consult a Dermatologist:**\n"
+                    + "If the rash spreads rapidly, forms blisters, oozes pus/fluid, or is accompanied by fever or swelling of the lips/face, book an appointment with a **Dermatologist / Skin Specialist** (e.g. *Dr. Abhishek Mishra* or *Dr. R.K. Jha* in Muzaffarpur or AIIMS Patna) for targeted dermatological evaluation.";
+        }
+
+        // 3. Respiratory Symptoms
         if (p.contains("breath") || p.contains("cough") || p.contains("lung") || p.contains("asthma") || p.contains("wheez")) {
             boolean severe = p.contains("severe") || p.contains("blood") || p.contains("cannot breathe") || p.contains("gasp");
             if (severe) {
@@ -241,6 +280,7 @@ public class GeminiClient {
             }
         }
 
+        // 4. Neurological & Headache Symptoms
         if (p.contains("headache") || p.contains("migraine") || p.contains("dizziness") || p.contains("numbness") || p.contains("seizure")) {
             boolean neuroRedFlag = p.contains("numb") || p.contains("weak") || p.contains("slurr") || p.contains("worst") || p.contains("seizure");
             if (neuroRedFlag) {
@@ -261,6 +301,7 @@ public class GeminiClient {
             }
         }
 
+        // 5. Fever & Infectious Diseases
         if (p.contains("fever") || p.contains("temperature") || p.contains("cold") || p.contains("flu") || p.contains("throat")) {
             return "### 🌡️ Fever & Viral Infection Management\n\n"
                     + "Mild viral infections and low-grade fevers can often be managed with supportive care, but monitoring temperature trajectory is essential.\n\n"
@@ -272,7 +313,22 @@ public class GeminiClient {
                     + "If fever persists for **more than 3 consecutive days**, exceeds 102.5°F, or is accompanied by rash, joint pain, or severe lethargy, book a consultation with a **General Physician / Internal Medicine Specialist** (e.g., *Dr. Navneet Kumar* in Muzaffarpur, or *Dr. Arvind Kumar* at AIIMS New Delhi) for complete blood counts and diagnostic workup.";
         }
 
-        if (p.contains("stomach") || p.contains("acid") || p.contains("gastric") || p.contains("abdomen") || p.contains("liver") || p.contains("digest")) {
+        // 6. Musculoskeletal, Joint, Spine & Orthopedic Pain
+        if (p.contains("knee") || p.contains("joint") || p.contains("bone") || p.contains("back") || p.contains("spine") 
+                || p.contains("muscle") || p.contains("neck pain") || p.contains("arthritis") || p.contains("sprain") || p.contains("leg pain")) {
+            return "### 🦴 Orthopedic & Joint Care Guidance\n\n"
+                    + "Musculoskeletal discomfort often stems from postural strain, repetitive physical loading, ligament sprains, or degenerative joint wear.\n\n"
+                    + "**Supportive Care Steps (R.I.C.E. Protocol):**\n"
+                    + "1. **Rest & Modification:** Avoid heavy lifting, sudden twisting movements, or prolonged standing on hard surfaces.\n"
+                    + "2. **Ice vs. Warmth:** Apply cold packs wrapped in a towel for 15 minutes during the initial 48 hours for acute swelling; apply gentle warm compresses for chronic stiffness.\n"
+                    + "3. **Posture & Ergonomics:** Maintain upright spinal alignment and use a firm, supportive mattress or lumbar support cushion.\n"
+                    + "4. **Low-Impact Movement:** Gentle hamstring and calf stretches promote blood circulation without joint overload.\n\n"
+                    + "**When to Consult an Orthopedic Specialist:**\n"
+                    + "If you experience inability to bear weight, joint swelling with warmth, persistent numbness/tingling radiating down your legs, or severe pain lasting > 7 days, schedule a consultation with an **Orthopedic Specialist / Spine Surgeon** (e.g. *Dr. Ramakant Kumar* in Patna or *Dr. Rajesh Malhotra* at AIIMS New Delhi).";
+        }
+
+        // 7. Digestive & Gastrointestinal Health
+        if (p.contains("stomach") || p.contains("acid") || p.contains("gastric") || p.contains("abdomen") || p.contains("liver") || p.contains("digest") || p.contains("constipat") || p.contains("vomit")) {
             return "### 🩺 Digestive & Gastrointestinal Health Guidance\n\n"
                     + "**For Mild Acidity or Indigestion:**\n"
                     + "- Eat smaller, frequent meals and avoid lying down for at least 2 hours after eating.\n"
@@ -282,6 +338,7 @@ public class GeminiClient {
                     + "If you experience sharp localized abdominal pain, persistent vomiting, unexplained weight loss, or yellowing of the eyes/skin (jaundice), book an appointment with a **Gastroenterologist / Liver Specialist** (e.g. *Dr. Amitesh Kumar* in Muzaffarpur).";
         }
 
+        // 8. Diabetes & Endocrine Health
         if (p.contains("diabetes") || p.contains("sugar") || p.contains("thyroid") || p.contains("glucose")) {
             return "### 🩸 Metabolic & Diabetes Care Support\n\n"
                     + "Maintaining steady glycemic control prevents long-term vascular and nerve complications.\n\n"
@@ -293,13 +350,14 @@ public class GeminiClient {
                     + "Schedule regular HbA1c reviews (every 3 months) with a **Diabetologist / Endocrine Specialist** (e.g. *Dr. Navneet Kumar* or *Dr. Ajit Kumar Sinha* in Muzaffarpur) to optimize therapeutic medication.";
         }
 
-        // General humanoid medical advice
-        return "### 🩺 MedPlus Health Consultant Overview\n\n"
-                + "Thank you for reaching out with your health question. Here is a balanced clinical overview:\n\n"
-                + "1. **Initial Assessment:** Pay attention to how long these symptoms have been present and whether they are stable or worsening.\n"
-                + "2. **Everyday Wellness Steps:** Prioritize hydration (2–3 liters daily), consistent sleep (7–8 hours), and a balanced, low-inflammatory diet.\n"
-                + "3. **Professional Consultation:** For specific diagnoses, prescription medications, or laboratory tests, we recommend booking an appointment with one of our **verified specialist doctors** across Muzaffarpur, Delhi, or Patna using the **Find Doctors** tab above.\n\n"
-                + "*If you have specific symptoms, please share details such as duration, severity, and any existing medical history for tailored guidance.*";
+        // 9. Contextual Dynamic Health Guidance
+        return "### 🩺 MedPlus Health Consultant Evaluation\n\n"
+                + "Thank you for describing your health concern regarding: **" + prompt + "**.\n\n"
+                + "**Clinical Observations & Guidance:**\n"
+                + "1. **Symptom Monitoring:** Track how long this issue has persisted, its intensity on a scale of 1–10, and whether it worsens with specific activities, foods, or positions.\n"
+                + "2. **General Supportive Care:** Ensure adequate fluid intake (2–3 liters daily), restorative sleep (7–8 hours), and avoid unprescribed self-medication.\n"
+                + "3. **Recommended Medical Evaluation:** For an accurate clinical diagnosis, physical examination, and appropriate diagnostic tests (blood panel, imaging, or prescriptions), we recommend booking a consultation with one of our **verified specialist doctors** using the **Find Doctors** tab above.\n\n"
+                + "*If you experience severe pain, high fever, difficulty breathing, or sudden weakness, please seek immediate in-person emergency medical care.*";
     }
 
     private void loadFromPropertiesFile() {

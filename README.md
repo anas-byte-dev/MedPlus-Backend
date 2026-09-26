@@ -1,5 +1,8 @@
 # 🏥 MedPlus Backend — Enterprise Spring Boot Healthcare Engine
 
+- **Frontend Repository:** [https://github.com/anas-byte-dev/MedPlus-Frontend](https://github.com/anas-byte-dev/MedPlus-Frontend)
+- **Backend Repository:** [https://github.com/anas-byte-dev/MedPlus-Backend](https://github.com/anas-byte-dev/MedPlus-Backend)
+
 Welcome to the backend service of **MedPlus Appointments**! I built this service using **Java 25**, **Spring Boot**, **Spring Security 6**, and **Spring Data JPA** to serve as the reliable, secure backbone for multi-role hospital operations, appointment scheduling, and autonomous AI-assisted clinical triage.
 
 ---
